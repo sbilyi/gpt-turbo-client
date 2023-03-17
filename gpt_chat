@@ -1,0 +1,96 @@
+#!/Library/Frameworks/Python.framework/Versions/3.11/bin/python3
+import os
+import openai
+import json
+import readline  # for arrow key navigation support
+
+# Set up OpenAI API credentials
+API_KEY = os.environ.get('OPENAI_API_KEY')
+
+openai.api_key = API_KEY
+
+# Define chat parameters
+MAX_HISTORY_LENGTH = 3
+CHAT_SESSIONS_DIR = os.path.expanduser("~/.chat_sessions")
+
+
+# Load conversation history for a given session ID
+def load_session(session_id):
+    session_file = os.path.join(CHAT_SESSIONS_DIR, session_id)
+    if not os.path.exists(session_file):
+        return []
+    with open(session_file, "r") as f:
+        return [line.strip() for line in f.readlines()]
+
+
+# Save a new message to a conversation history file
+def save_session(session_id, message):
+    session_file = os.path.join(CHAT_SESSIONS_DIR, session_id)
+    with open(session_file, "a") as f:
+        f.write(message + "\n")
+
+
+# Send a message to the GPT-3 API and return the response
+def send_message(message, history=[]):
+    history.append(message)
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        max_tokens=1024,
+        stop=None,
+        temperature=0.5,
+        messages=history[-MAX_HISTORY_LENGTH:]
+    )
+    return response.choices[0].message
+
+
+# List all saved chat sessions
+def list_sessions():
+    return sorted(os.listdir(CHAT_SESSIONS_DIR))
+
+
+# Display a menu and prompt the user for their selection
+def choose_session():
+    sessions = list_sessions()
+    print("Choose a chat session:")
+    for i, session in enumerate(sessions):
+        print(f"  {i + 1}. {session}")
+    print(f"  {len(sessions) + 1}. New session")
+    choice = None
+    while choice is None:
+        try:
+            choice = int(input("> "))
+            if not 1 <= choice <= len(sessions) + 1:
+                print("Invalid choice, please try again.")
+                choice = None
+        except ValueError:
+            print("Invalid choice, please try again.")
+    if choice == len(sessions) + 1:
+        return None
+    else:
+        return sessions[choice - 1]
+
+
+# Main chat loop
+def main():
+    if not os.path.exists(CHAT_SESSIONS_DIR):
+        os.makedirs(CHAT_SESSIONS_DIR)
+    session_id = choose_session()
+    if session_id is None:
+        session_id = input("Enter new session ID: ")
+    history = load_session(session_id)
+    while True:
+        message = input("> ")
+        if not message.strip():
+            continue
+        message = {'role': 'user', 'content': message}
+        response = send_message(message, history)
+        print(response.content)
+        history.append(response)
+
+        with open(os.path.join(CHAT_SESSIONS_DIR, session_id + ".json"), "w") as f:
+            json.dump(history, f)
+
+
+if __name__ == "__main__":
+    main()
+
